@@ -1,0 +1,106 @@
+//package fgm.beans.site;
+//
+//import fgm.specs.data.StreamRecord;
+//import fgm.specs.data.StreamRecord;
+//import fgm.specs.site.CustomWindow;
+//import fgm.utils.SerializationUtil;
+//import org.apache.log4j.Logger;
+//import org.apache.log4j.PropertyConfigurator;
+//import org.joda.time.DateTime;
+//import org.joda.time.DateTimeZone;
+//
+//import java.util.ArrayList;
+//import java.util.List;
+//import java.util.Timer;
+//import java.util.TimerTask;
+//import java.util.concurrent.ConcurrentLinkedQueue;
+//import java.util.concurrent.locks.ReentrantReadWriteLock;
+//
+//public class StatisticsCustomSlidingWindow<T> implements CustomWindow<T> {
+//
+//    private final Logger logger = Logger.getLogger(StatisticsCustomSlidingWindow.class.getName());
+//
+//    private final int windowWidth; //duration is in seconds
+//    private final int repetitionInterval; //how ofter a timer reshapes the custom window in milliseconds
+//    private final Timer timer;
+//    private final ConcurrentLinkedQueue <List <StreamRecord>> queue; //the data structure of the window is a queue
+//    private StreamRecord last;
+//    private List<StreamRecord> lastListInserted;
+//    private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock(true);
+//    private final CentralizedFastAGMS Si;
+//
+//    public StatisticsCustomSlidingWindow(int windowWidth, int repetitionInterval, CentralizedFastAGMS Si){
+//        PropertyConfigurator.configure(
+//                getClass().getClassLoader().getResourceAsStream("log4j.properties"));
+//        this.Si = Si;
+//        this.queue = new ConcurrentLinkedQueue<>(); //read 3600 and 10 from file
+//        this.windowWidth = windowWidth;
+//        this.timer = new Timer();
+//        this.repetitionInterval = repetitionInterval;
+//        scheduleTimer(); //read from file
+//    }
+//
+//    private synchronized void keepWindowTimeFrame() { //reference to Si sketch
+//        lock.writeLock().lock();
+//        while ( queue.size() > this.windowWidth ) { //check if parameter of operation can be used with write lock
+//            List<StreamRecord> list = queue.poll();
+//            for ( StreamRecord record2 : list ) {
+//                Si.updateNegative(record2);
+//            }
+//        }
+//        lock.writeLock().unlock();
+//    }
+//
+//    private void scheduleTimer() {
+//        try {
+//            timer.scheduleAtFixedRate(new TimerTask() {
+//                @Override
+//                public void run() {
+//                    keepWindowTimeFrame();
+//                }
+//            }, (long) windowWidth * repetitionInterval,  repetitionInterval); //1000 should be file property
+//        } catch (Exception ex) {
+//            logger.info(ex.getMessage());
+//        }
+//    }
+//
+//    //the ordering key of the record already exists in the queue (window)
+//    private void updateStateAndAppendToWindow(StreamRecord record) {
+//        Si.update(record);
+//        lastListInserted.add(record);
+//    }
+//
+//    // the ordering key of the record does not exist in the queue
+//    private void updateStateAndUpdateWindow(StreamRecord record) {
+//        this.Si.update(record);
+//        List<StreamRecord> recordList = new ArrayList <>();
+//        recordList.add(record);
+//        queue.add(recordList);
+//        last = SerializationUtil.deepCopy(record);
+//        lastListInserted = recordList;
+//    }
+//
+//    //the length of the queue shapes the window size and each record of the queue is a list of the records
+//    // that have the same timestamp (the timestamp of stream record congestion time according to an external system clock)
+//    public void updateWindow(StreamRecord record) {
+//
+//        if(record instanceof WorldCupRecord && last instanceof WorldCupRecord) {
+//            DateTime dt = new DateTime(DateTimeZone.UTC);
+//            ((WorldCupRecord)record).setWindowOrderingKey(Long.valueOf(((long) dt.getMillis()) / (Long.valueOf(1000)))); //congestion time according to external clock
+//            if (queue.isEmpty()) {
+//                updateStateAndUpdateWindow(record);
+//            } else {
+//                if (((WorldCupRecord)record).getWindowOrderingKey().longValue() == ((WorldCupRecord) last).getWindowOrderingKey().longValue()) {
+//
+//                    updateStateAndAppendToWindow(record);
+//                } else {
+//                    long result = ((WorldCupRecord) record).getWindowOrderingKey().longValue() - ((WorldCupRecord) last).getWindowOrderingKey().longValue();
+//
+//                    updateStateAndUpdateWindow(record);
+//                }
+//            }
+//        }
+//    }
+//}
+//
+//
